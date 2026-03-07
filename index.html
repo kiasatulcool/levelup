@@ -380,41 +380,58 @@ const OnboardingPage = ({user,onComplete})=>{
     setStep(4);setLoading(true);setErr("");
     const prompt=buildPrompt(form);
     try{
-      const{data:{session}}=await sb.auth.getSession();
+      // Call edge function - JWT verify is off so no token needed
       const res=await fetch(EDGE_FN_URL,{
         method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.access_token}`},
+        headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON_KEY},
         body:JSON.stringify({
           system:"You are an elite personal development coach. Generate a detailed, personalised schedule in JSON format. Return ONLY valid JSON — no markdown, no explanation.",
           messages:[{role:"user",content:prompt}]
         })
       });
+
+      if(!res.ok){
+        const errText=await res.text();
+        throw new Error(`Edge function error (${res.status}): ${errText}`);
+      }
+
       const data=await res.json();
+      if(data.error) throw new Error(data.error);
+
       const text=data.content?.[0]?.text||"";
+      if(!text) throw new Error("Empty response from AI. Check that ANTHROPIC_API_KEY is set in Supabase Edge Function secrets.");
+
       let schedule;
       try{schedule=JSON.parse(text);}
-      catch{const m=text.match(/```(?:json)?\s*([\s\S]*?)```/);if(m)schedule=JSON.parse(m[1]);else throw new Error("Invalid JSON from AI");}
+      catch{
+        const m=text.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if(m){try{schedule=JSON.parse(m[1]);}catch{throw new Error("AI returned invalid JSON. Try again.");}}
+        else throw new Error("AI response was not valid JSON. Try again.");
+      }
 
       // Save to Supabase
-      await sb.from("user_data").upsert({
+      const{error:upsertErr}=await sb.from("user_data").upsert({
         user_id:user.id,
         goal_type:form.goalType,
         form_data:form,
         schedule:schedule,
         schedule_generated_at:new Date().toISOString()
       },{onConflict:"user_id"});
+      if(upsertErr) throw new Error("Failed to save schedule: "+upsertErr.message);
+
       await sb.from("profiles").update({onboarding_complete:true}).eq("id",user.id);
 
       // Seed default tasks from schedule
       if(schedule.tasks?.length){
         await sb.from("tasks").delete().match({user_id:user.id,date:todayStr(),is_default:true});
         await sb.from("tasks").insert(schedule.tasks.slice(0,15).map(t=>({
-          user_id:user.id,date:todayStr(),label:t.label,category:t.category,done:false,is_default:true
+          user_id:user.id,date:todayStr(),label:t.label,category:t.category||"study",done:false,is_default:true
         })));
       }
       onComplete();
     }catch(e){
-      setErr("Failed to generate schedule: "+e.message+". Check your Supabase Edge Function and API key.");
+      console.error("Schedule generation failed:",e);
+      setErr(e.message||"Unknown error. Please try again.");
       setStep(3);
     }
     setLoading(false);
