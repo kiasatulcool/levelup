@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="theme-color" content="#070707"/>
+<meta name="description" content="LevelUp — AI-powered self improvement for students and professionals"/>
+<title>LevelUp — Build Your Best Self</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:#070707;color:#ececec;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:#0d0d0d;}
+::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:10px;}
+input,textarea,select{font-family:inherit;}
+input::placeholder,textarea::placeholder{color:#3a3a3a;}
+button{cursor:pointer;font-family:inherit;}
+a{color:inherit;text-decoration:none;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slidein{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(212,175,55,.1)}50%{box-shadow:0 0 40px rgba(212,175,55,.25)}}
+.fadein{animation:fadein .3s ease both;}
+.spin{animation:spin 1s linear infinite;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef,useMemo}=React;
+
+// ── CONFIG — Replace SUPABASE_ANON_KEY with yours from Project Settings → API ──
+const SUPABASE_URL   = "https://rxysviuhbsgkywcncjzc.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4eXN2aXVoYnNna3l3Y25janpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjM3MzgsImV4cCI6MjA4ODQzOTczOH0.1Rj4Lm_9m0YnHKsQ4LZIwd-sqHbRArF2FfPEVocQcMU";
+const EDGE_FN_URL    = `${SUPABASE_URL}/functions/v1/claude-proxy`;
+const ADMIN_EMAIL    = "kiasatulmabood@gmail.com";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── THEME ────────────────────────────────────────────────────────────────────
+const T = {
+  gold:"#D4AF37", goldDim:"#7a6010", goldFaint:"#0d0a00",
+  bg:"#070707", card:"#0e0e0e", card2:"#131313", border:"#1f1f1f",
+  text:"#ececec", muted:"#4a4a4a", muted2:"#777",
+  green:"#22c55e", red:"#ef4444", blue:"#3b82f6",
+};
+
+// ── HELPERS ──────────────────────────────────────────────────────────────────
+const todayStr = () => new Date().toISOString().slice(0,10);
+const s = (obj) => Object.entries(obj).map(([k,v])=>`${k}:${v}`).join(';');
+const pctColor = pct => {
+  if(pct===undefined||pct===null) return {bg:"#111",text:T.muted};
+  if(pct===100) return {bg:"#1c3a00",text:"#7fff40"};
+  if(pct>=75)   return {bg:"#1a2b00",text:"#a0d040"};
+  if(pct>=50)   return {bg:"#2b2200",text:T.gold};
+  if(pct>=25)   return {bg:"#2b1500",text:"#ff9944"};
+  return {bg:"#2b0a0a",text:"#ff5544"};
+};
+
+// ── REUSABLE UI ───────────────────────────────────────────────────────────────
+const Spinner = ({size=20})=>(
+  <div style={{width:size,height:size,border:`2px solid ${T.border}`,borderTopColor:T.gold,borderRadius:"50%"}} className="spin"/>
+);
+const Btn = ({children,onClick,variant="gold",style:st={},disabled,loading})=>{
+  const base={padding:"11px 20px",borderRadius:"10px",fontWeight:700,fontSize:".8rem",border:"none",transition:"all .2s",letterSpacing:".5px",...st};
+  const variants={
+    gold:{background:T.gold,color:"#000"},
+    outline:{background:"transparent",border:`1px solid ${T.border}`,color:T.muted2},
+    ghost:{background:"transparent",color:T.muted2},
+    danger:{background:"#2b0a0a",color:"#ff5544",border:"1px solid #4a1a1a"},
+  };
+  return <button onClick={onClick} disabled={disabled||loading} style={{...base,...variants[variant],opacity:disabled||loading?.5:1}}>
+    {loading?<span style={{display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}><Spinner size={14}/> Loading...</span>:children}
+  </button>;
+};
+const Input = ({label,value,onChange,type="text",placeholder,error,style:st={}})=>(
+  <div style={{marginBottom:14}}>
+    {label&&<div style={{fontSize:".68rem",fontWeight:700,color:T.muted2,textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:6}}>{label}</div>}
+    <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+      style={{width:"100%",background:T.card,border:`1px solid ${error?T.red:T.border}`,borderRadius:10,color:T.text,padding:"11px 14px",fontSize:".8rem",...st}}/>
+    {error&&<div style={{fontSize:".65rem",color:T.red,marginTop:4}}>{error}</div>}
+  </div>
+);
+const Select = ({label,value,onChange,options,style:st={}})=>(
+  <div style={{marginBottom:14}}>
+    {label&&<div style={{fontSize:".68rem",fontWeight:700,color:T.muted2,textTransform:"uppercase",letterSpacing:"1.5px",marginBottom:6}}>{label}</div>}
+    <select value={value} onChange={onChange} style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,color:T.text,padding:"11px 14px",fontSize:".8rem",...st}}>
+      {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>
+);
+const Card = ({children,style:st={}})=>(
+  <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,...st}}>{children}</div>
+);
+const Tag = ({children,color})=>(
+  <span style={{display:"inline-block",padding:"2px 8px",borderRadius:20,fontSize:".58rem",fontWeight:700,letterSpacing:"1px",textTransform:"uppercase",background:color?.bg||T.card,color:color?.text||T.muted2}}>{children}</span>
+);
+
+// ── DONUT CHART ───────────────────────────────────────────────────────────────
+const Donut = ({pct,size=100})=>{
+  const safeP=Math.min(100,Math.max(0,pct||0));
+  const r=38,cx=50,cy=50;
+  const circ=2*Math.PI*r;
+  const dash=safeP===0?0:(safeP/100)*circ;
+  const color=safeP===100?"#7fff40":T.gold;
+  return(
+    <svg viewBox="0 0 100 100" width={size} height={size} style={{display:"block"}}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1f1f1f" strokeWidth="10"/>
+      {safeP>0&&<circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="10"
+        strokeDasharray={`${dash} ${circ}`}
+        strokeDashoffset={circ/4}
+        strokeLinecap="round"
+        style={{transition:"stroke-dasharray .6s ease"}}/>}
+      <text x={cx} y={cy+2} textAnchor="middle" dominantBaseline="middle" fill={color} fontSize="16" fontWeight="900" fontFamily="Helvetica,Arial,sans-serif">{safeP}%</text>
+      <text x={cx} y={cy+16} textAnchor="middle" fill={T.muted2} fontSize="8" fontFamily="Helvetica,Arial,sans-serif">done</text>
+    </svg>
+  );
+};
+
+// ── MONTHLY CALENDAR ─────────────────────────────────────────────────────────
+const MonthCalendar = ({records})=>{
+  const now=new Date(),y=now.getFullYear(),m=now.getMonth();
+  const days=new Date(y,m+1,0).getDate();
+  const first=new Date(y,m,1).getDay();
+  const mName=now.toLocaleString("default",{month:"long"});
+  return(
+    <div>
+      <div style={{textAlign:"center",fontWeight:700,marginBottom:12,fontSize:".8rem"}}>{mName} {y}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:3}}>
+        {["S","M","T","W","T","F","S"].map((d,i)=>(
+          <div key={i} style={{textAlign:"center",fontSize:".55rem",color:T.muted,fontWeight:700}}>{d}</div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+        {Array.from({length:first}).map((_,i)=><div key={`e${i}`}/>)}
+        {Array.from({length:days}).map((_,i)=>{
+          const day=i+1;
+          const key=`${y}-${String(m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+          const pct=records?.[key];
+          const col=pctColor(pct);
+          const isToday=day===now.getDate();
+          return(
+            <div key={day} style={{background:col.bg,borderRadius:6,padding:"5px 2px",textAlign:"center",border:isToday?`1px solid ${T.gold}`:"1px solid transparent"}}>
+              <div style={{fontSize:".5rem",color:isToday?T.gold:T.muted2,fontWeight:isToday?700:400}}>{day}</div>
+              <div style={{fontSize:".55rem",fontWeight:700,color:col.text,marginTop:1}}>{pct!==undefined?`${pct}%`:"—"}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ── YEARLY CHART ─────────────────────────────────────────────────────────────
+const YearlyChart = ({records})=>{
+  const now=new Date(),y=now.getFullYear();
+  const mNames=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const data=mNames.map((name,mIdx)=>{
+    const days=new Date(y,mIdx+1,0).getDate();
+    const pcts=[];
+    for(let d=1;d<=days;d++){
+      const k=`${y}-${String(mIdx+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      if(records?.[k]!==undefined) pcts.push(records[k]);
+    }
+    const avg=pcts.length?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):undefined;
+    return{name,avg,days:pcts.length};
+  });
+  const tracked=data.filter(m=>m.avg!==undefined);
+  const yearAvg=tracked.length?Math.round(tracked.reduce((a,m)=>a+m.avg,0)/tracked.length):null;
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+        {data.map(({name,avg,days},i)=>{
+          const col=pctColor(avg);
+          const isCur=i===now.getMonth();
+          return(
+            <div key={name} style={{background:col.bg,border:isCur?`1px solid ${T.gold}`:`1px solid ${T.border}`,borderRadius:10,padding:"10px 8px",textAlign:"center"}}>
+              <div style={{fontSize:".65rem",fontWeight:700,color:isCur?T.gold:T.muted2,marginBottom:4}}>{name}</div>
+              <div style={{fontSize:"1.2rem",fontWeight:900,color:col.text,lineHeight:1}}>{avg!==undefined?`${avg}%`:"—"}</div>
+              <div style={{fontSize:".5rem",color:T.muted,marginTop:3}}>{days>0?`${days} days`:"no data"}</div>
+            </div>
+          );
+        })}
+      </div>
+      {yearAvg&&(
+        <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:".58rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:"1.5px"}}>Yearly Average</div>
+            <div style={{fontSize:".63rem",color:T.muted2,marginTop:3}}>{tracked.length} month{tracked.length>1?"s":""} tracked</div>
+          </div>
+          <div style={{fontSize:"1.8rem",fontWeight:900,color:pctColor(yearAvg).text}}>{yearAvg}%</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LANDING PAGE
+// ═══════════════════════════════════════════════════════════════════════════════
+const LandingPage = ({onGetStarted})=>{
+  const features=[
+    {icon:"🎯",title:"AI-Powered Schedule",desc:"Claude AI builds your exact daily schedule based on your goals, time, and lifestyle."},
+    {icon:"✅",title:"Daily Task Tracker",desc:"Tick off your goals. Live pie chart shows your daily completion in real time."},
+    {icon:"📈",title:"Progress Records",desc:"Monthly calendar heatmap and yearly overview so you can see your growth."},
+    {icon:"🔥",title:"Streak Tracking",desc:"Build momentum. Your daily streak is your most powerful motivator."},
+    {icon:"🏆",title:"Leaderboard",desc:"See how you rank against other LevelUp users globally. Stay competitive."},
+    {icon:"🛡️",title:"Built for You",desc:"Whether you're prepping for an exam, building fitness, or just building discipline."},
+  ];
+  return(
+    <div style={{minHeight:"100vh",background:T.bg}} className="fadein">
+      {/* Nav */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 20px",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,background:T.bg,zIndex:100}}>
+        <div style={{fontWeight:900,fontSize:"1.2rem",color:T.gold,letterSpacing:"3px"}}>LEVELUP</div>
+        <Btn onClick={onGetStarted} style={{padding:"8px 18px",fontSize:".72rem"}}>Get Started</Btn>
+      </div>
+
+      {/* Hero */}
+      <div style={{textAlign:"center",padding:"60px 20px 40px",maxWidth:600,margin:"0 auto"}}>
+        <div style={{fontSize:".6rem",letterSpacing:"4px",color:T.goldDim,textTransform:"uppercase",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <span style={{width:5,height:5,background:T.green,borderRadius:"50%",display:"inline-block",animation:"pulse 2s infinite"}}/>
+          AI-Powered Self Improvement
+        </div>
+        <div style={{fontSize:"clamp(2.2rem,8vw,3.5rem)",fontWeight:900,color:T.text,lineHeight:1.1,marginBottom:16}}>
+          Build Your<br/><span style={{color:T.gold}}>Best Self.</span>
+        </div>
+        <div style={{fontSize:".85rem",color:T.muted2,lineHeight:1.7,marginBottom:32,maxWidth:420,margin:"0 auto 32px"}}>
+          LevelUp takes your goals, schedule, and lifestyle — then builds you a personalised AI-powered plan. Track daily, grow monthly, dominate yearly.
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+          <Btn onClick={onGetStarted} style={{padding:"13px 28px",fontSize:".85rem"}}>Start For Free</Btn>
+          <Btn variant="outline" onClick={onGetStarted} style={{padding:"13px 24px",fontSize:".85rem"}}>Sign In</Btn>
+        </div>
+      </div>
+
+      {/* Features */}
+      <div style={{maxWidth:860,margin:"0 auto",padding:"40px 16px"}}>
+        <div style={{textAlign:"center",fontSize:".6rem",letterSpacing:"4px",color:T.goldDim,textTransform:"uppercase",marginBottom:24}}>Everything You Need</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
+          {features.map(f=>(
+            <Card key={f.title} style={{padding:20}}>
+              <div style={{fontSize:"1.6rem",marginBottom:10}}>{f.icon}</div>
+              <div style={{fontWeight:700,color:T.text,marginBottom:6,fontSize:".85rem"}}>{f.title}</div>
+              <div style={{fontSize:".72rem",color:T.muted2,lineHeight:1.6}}>{f.desc}</div>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div style={{textAlign:"center",padding:"40px 20px 60px"}}>
+        <div style={{fontWeight:900,fontSize:"1.5rem",color:T.text,marginBottom:8}}>Ready to <span style={{color:T.gold}}>Level Up?</span></div>
+        <div style={{fontSize:".78rem",color:T.muted2,marginBottom:24}}>Join thousands building better versions of themselves.</div>
+        <Btn onClick={onGetStarted} style={{padding:"14px 32px",fontSize:".88rem"}}>Create Your Free Account</Btn>
+      </div>
+
+      {/* Footer */}
+      <div style={{borderTop:`1px solid ${T.border}`,padding:"20px",textAlign:"center",fontSize:".65rem",color:T.muted}}>
+        © 2026 LevelUp — Built for achievers.
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTH PAGE
+// ═══════════════════════════════════════════════════════════════════════════════
+const AuthPage = ({onBack})=>{
+  const [mode,setMode]=useState("signin");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [name,setName]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+  const [msg,setMsg]=useState("");
+
+  const handleGoogle=async()=>{
+    setLoading(true);setErr("");
+    const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.href}});
+    if(error)setErr(error.message);
+    setLoading(false);
+  };
+
+  const handleEmail=async()=>{
+    setLoading(true);setErr("");setMsg("");
+    if(mode==="signup"){
+      const{error}=await sb.auth.signUp({email,password,options:{data:{full_name:name}}});
+      if(error)setErr(error.message);
+      else setMsg("Check your email to confirm your account.");
+    } else {
+      const{error}=await sb.auth.signInWithPassword({email,password});
+      if(error)setErr(error.message);
+    }
+    setLoading(false);
+  };
+
+  return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,background:T.bg}} className="fadein">
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontWeight:900,fontSize:"1.8rem",color:T.gold,letterSpacing:"4px",marginBottom:6}}>LEVELUP</div>
+          <div style={{fontSize:".78rem",color:T.muted2}}>{mode==="signin"?"Welcome back. Let's get to work.":"Create your account. Start levelling up."}</div>
+        </div>
+
+        <Card style={{padding:24}}>
+          {/* Google */}
+          <button onClick={handleGoogle} disabled={loading} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#fff",color:"#111",border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:".8rem",marginBottom:20,opacity:loading?.5:1}}>
+            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            Continue with Google
+          </button>
+
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+            <div style={{flex:1,height:1,background:T.border}}/>
+            <span style={{fontSize:".65rem",color:T.muted}}>or with email</span>
+            <div style={{flex:1,height:1,background:T.border}}/>
+          </div>
+
+          {mode==="signup"&&<Input label="Full Name" value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/>}
+          <Input label="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com"/>
+          <Input label="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" error={err}/>
+          {msg&&<div style={{fontSize:".7rem",color:T.green,marginBottom:12,background:"#0a200a",padding:"10px 12px",borderRadius:8}}>{msg}</div>}
+          <Btn onClick={handleEmail} loading={loading} style={{width:"100%",marginBottom:16}}>
+            {mode==="signin"?"Sign In":"Create Account"}
+          </Btn>
+          <div style={{textAlign:"center",fontSize:".72rem",color:T.muted2}}>
+            {mode==="signin"?"Don't have an account? ":"Already have one? "}
+            <span style={{color:T.gold,cursor:"pointer",fontWeight:700}} onClick={()=>{setMode(mode==="signin"?"signup":"signin");setErr("");setMsg("");}}>
+              {mode==="signin"?"Sign Up":"Sign In"}
+            </span>
+          </div>
+        </Card>
+
+        <div style={{textAlign:"center",marginTop:20}}>
+          <span style={{fontSize:".7rem",color:T.muted,cursor:"pointer"}} onClick={onBack}>← Back to home</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ONBOARDING
+// ═══════════════════════════════════════════════════════════════════════════════
+const GOAL_TYPES=[
+  {id:"exam",icon:"📚",label:"Exam Preparation",desc:"NEET, JEE, UPSC, or any competitive exam"},
+  {id:"fitness",icon:"💪",label:"Fitness & Physique",desc:"Fat loss, muscle gain, endurance, or all three"},
+  {id:"habits",icon:"⚡",label:"Discipline & Habits",desc:"Morning routines, focus, consistency"},
+  {id:"career",icon:"🚀",label:"Career & Skills",desc:"Coding, design, freelance, upskilling"},
+  {id:"all",icon:"🏆",label:"Complete Upgrade",desc:"Study + Fitness + Habits together"},
+];
+
+const OnboardingPage = ({user,onComplete})=>{
+  const [step,setStep]=useState(0);
+  const [form,setForm]=useState({
+    name:"",age:"",type:"student",goalType:"",
+    examName:"",examDate:"",studyHours:"4",subjects:"",weakSubjects:"",
+    fitnessLevel:"beginner",fitnessGoal:"fat_loss",equipment:"none",
+    habitGoal:"",wakeTime:"06:00",sleepTime:"22:00",freeHours:"4",
+    careerSkill:"",careerGoal:"job",
+  });
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+
+  const upd=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  // Step 0: Basic profile
+  // Step 1: Goal selection
+  // Step 2: Goal-specific details
+  // Step 3: Schedule preferences
+  // Step 4: Generating (AI call)
+
+  const next=async()=>{
+    if(step===3){
+      await generateSchedule();
+    } else {
+      setStep(s=>s+1);
+    }
+  };
+
+  const generateSchedule=async()=>{
+    setStep(4);setLoading(true);setErr("");
+    const prompt=buildPrompt(form);
+    try{
+      // Call edge function - JWT verify is off so no token needed
+      const res=await fetch(EDGE_FN_URL,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON_KEY},
+        body:JSON.stringify({
+          system:"You are an elite personal development coach. Generate a detailed, personalised schedule in JSON format. Return ONLY valid JSON — no markdown, no explanation.",
+          messages:[{role:"user",content:prompt}]
+        })
+      });
+
+      if(!res.ok){
+        const errText=await res.text();
+        throw new Error(`Edge function error (${res.status}): ${errText}`);
+      }
+
+      const data=await res.json();
+      if(data.error) throw new Error(data.error);
+
+      const text=data.content?.[0]?.text||"";
+      if(!text) throw new Error("Empty response from AI. Check that ANTHROPIC_API_KEY is set in Supabase Edge Function secrets.");
+
+      let schedule;
+      try{schedule=JSON.parse(text);}
+      catch{
+        const m=text.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if(m){try{schedule=JSON.parse(m[1]);}catch{throw new Error("AI returned invalid JSON. Try again.");}}
+        else throw new Error("AI response was not valid JSON. Try again.");
+      }
+
+      // Save to Supabase with retry logic for lock errors
+      const saveWithRetry = async (retries=3) => {
+        for(let i=0;i<retries;i++){
+          try{
+            const{error:upsertErr}=await sb.from("user_data").upsert({
+              user_id:user.id,
+              goal_type:form.goalType,
+              form_data:form,
+              schedule:schedule,
+              schedule_generated_at:new Date().toISOString()
+            },{onConflict:"user_id"});
+            if(upsertErr) throw new Error(upsertErr.message);
+            return true;
+          }catch(e){
+            if(i===retries-1) throw e;
+            // Wait 1s before retry
+            await new Promise(r=>setTimeout(r,1000));
+          }
+        }
+      };
+      await saveWithRetry();
+      await sb.from("profiles").update({onboarding_complete:true}).eq("id",user.id);
+
+      // Seed default tasks
+      if(schedule.tasks?.length){
+        await sb.from("tasks").delete().match({user_id:user.id,date:todayStr(),is_default:true});
+        await sb.from("tasks").insert(schedule.tasks.slice(0,15).map(t=>({
+          user_id:user.id,date:todayStr(),label:t.label,category:t.category||"study",done:false,is_default:true
+        })));
+      }
+      onComplete();
+    }catch(e){
+      console.error("Schedule generation failed:",e);
+      setErr(e.message||"Unknown error. Please try again.");
+      setStep(3);
+    }
+    setLoading(false);
+  };
+
+  const buildPrompt=(f)=>`
+Generate a complete personalised self-improvement schedule for this person:
+
+Name: ${f.name||"User"}
+Age: ${f.age||"N/A"}
+Type: ${f.type}
+Primary Goal: ${f.goalType}
+${f.goalType==="exam"||f.goalType==="all"?`Exam: ${f.examName}, Exam Date: ${f.examDate}, Daily Study Hours: ${f.studyHours}, Subjects: ${f.subjects}, Weak Areas: ${f.weakSubjects}`:""}
+${f.goalType==="fitness"||f.goalType==="all"?`Fitness Level: ${f.fitnessLevel}, Goal: ${f.fitnessGoal}, Equipment: ${f.equipment}`:""}
+${f.goalType==="habits"||f.goalType==="all"?`Habit Goal: ${f.habitGoal}`:""}
+${f.goalType==="career"?`Skill: ${f.careerSkill}, Goal: ${f.careerGoal}`:""}
+Wake Time: ${f.wakeTime}, Sleep Time: ${f.sleepTime}, Free Hours Per Day: ${f.freeHours}
+
+Return ONLY this JSON structure:
+{
+  "daily_schedule": [
+    {"time": "6:00 AM", "title": "...", "desc": "...", "category": "routine|study|fitness|break"}
+  ],
+  "weekly_plan": {
+    "note": "Brief weekly strategy",
+    "structure": "How subjects/goals rotate across the week"
+  },
+  "key_rules": ["Rule 1", "Rule 2", "Rule 3", "Rule 4", "Rule 5"],
+  "neet_roadmap": "Optional: roadmap if exam prep",
+  "tasks": [
+    {"label": "Task description here", "category": "routine|study|fitness|health"}
+  ]
+}
+
+Make the schedule highly personalised, specific, and motivating. Tasks should be concrete daily actions (10-14 tasks max).
+`;
+
+  const steps=["Profile","Goals","Details","Schedule","Generating"];
+  const pct=Math.round((step/4)*100);
+
+  return(
+    <div style={{minHeight:"100vh",background:T.bg,padding:"20px 16px 60px",maxWidth:500,margin:"0 auto"}} className="fadein">
+      {/* Progress */}
+      <div style={{marginBottom:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{fontWeight:900,color:T.gold,letterSpacing:"2px",fontSize:".8rem"}}>LEVELUP</div>
+          <div style={{fontSize:".68rem",color:T.muted2}}>Step {Math.min(step+1,4)} of 4</div>
+        </div>
+        <div style={{height:4,background:T.border,borderRadius:10,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${T.goldDim},${T.gold})`,borderRadius:10,transition:"width .4s ease"}}/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+          {steps.slice(0,4).map((s,i)=>(
+            <div key={s} style={{fontSize:".55rem",color:i<=step?T.gold:T.muted,fontWeight:i===step?700:400}}>{s}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* STEP 0: Profile */}
+      {step===0&&(
+        <div className="fadein">
+          <div style={{fontWeight:900,fontSize:"1.2rem",color:T.text,marginBottom:6}}>Tell us about yourself</div>
+          <div style={{fontSize:".72rem",color:T.muted2,marginBottom:24}}>This helps us personalise everything for you.</div>
+          <Input label="Your Name" value={form.name} onChange={e=>upd("name",e.target.value)} placeholder="What should we call you?"/>
+          <Input label="Age" type="number" value={form.age} onChange={e=>upd("age",e.target.value)} placeholder="Your age"/>
+          <Select label="You are a..." value={form.type} onChange={e=>upd("type",e.target.value)} options={[
+            {value:"student",label:"Student (School / College)"},
+            {value:"professional",label:"Working Professional"},
+            {value:"both",label:"Student + Working"},
+            {value:"other",label:"Other"},
+          ]}/>
+          <Btn onClick={next} style={{width:"100%",marginTop:8}} disabled={!form.name}>Continue →</Btn>
+        </div>
+      )}
+
+      {/* STEP 1: Goal selection */}
+      {step===1&&(
+        <div className="fadein">
+          <div style={{fontWeight:900,fontSize:"1.2rem",color:T.text,marginBottom:6}}>What's your primary goal?</div>
+          <div style={{fontSize:".72rem",color:T.muted2,marginBottom:20}}>Choose what you want to focus on most.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
+            {GOAL_TYPES.map(g=>(
+              <div key={g.id} onClick={()=>upd("goalType",g.id)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px",background:form.goalType===g.id?T.goldFaint:T.card,border:`1px solid ${form.goalType===g.id?T.gold:T.border}`,borderRadius:12,cursor:"pointer",transition:"all .2s"}}>
+                <span style={{fontSize:"1.4rem"}}>{g.icon}</span>
+                <div>
+                  <div style={{fontWeight:700,color:form.goalType===g.id?T.gold:T.text,fontSize:".82rem"}}>{g.label}</div>
+                  <div style={{fontSize:".68rem",color:T.muted2,marginTop:2}}>{g.desc}</div>
+                </div>
+                {form.goalType===g.id&&<span style={{marginLeft:"auto",color:T.gold,fontSize:"1.2rem"}}>✓</span>}
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn variant="outline" onClick={()=>setStep(0)} style={{flex:1}}>← Back</Btn>
+            <Btn onClick={next} style={{flex:2}} disabled={!form.goalType}>Continue →</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: Goal-specific details */}
+      {step===2&&(
+        <div className="fadein">
+          <div style={{fontWeight:900,fontSize:"1.2rem",color:T.text,marginBottom:6}}>Goal Details</div>
+          <div style={{fontSize:".72rem",color:T.muted2,marginBottom:20}}>The more detail you give, the better your schedule.</div>
+
+          {(form.goalType==="exam"||form.goalType==="all")&&<>
+            <Input label="Exam Name (e.g. NEET, JEE, UPSC)" value={form.examName} onChange={e=>upd("examName",e.target.value)} placeholder="NEET 2027"/>
+            <Input label="Target Exam Date" type="date" value={form.examDate} onChange={e=>upd("examDate",e.target.value)}/>
+            <Input label="Study Hours Per Day" type="number" value={form.studyHours} onChange={e=>upd("studyHours",e.target.value)} placeholder="4"/>
+            <Input label="Subjects (comma separated)" value={form.subjects} onChange={e=>upd("subjects",e.target.value)} placeholder="Physics, Chemistry, Biology"/>
+            <Input label="Weakest Subject(s)" value={form.weakSubjects} onChange={e=>upd("weakSubjects",e.target.value)} placeholder="Physics, Maths"/>
+          </>}
+
+          {(form.goalType==="fitness"||form.goalType==="all")&&<>
+            <Select label="Current Fitness Level" value={form.fitnessLevel} onChange={e=>upd("fitnessLevel",e.target.value)} options={[
+              {value:"beginner",label:"Beginner — just starting out"},
+              {value:"intermediate",label:"Intermediate — some experience"},
+              {value:"advanced",label:"Advanced — trained consistently"},
+            ]}/>
+            <Select label="Fitness Goal" value={form.fitnessGoal} onChange={e=>upd("fitnessGoal",e.target.value)} options={[
+              {value:"fat_loss",label:"Fat Loss & Lean Physique"},
+              {value:"muscle",label:"Build Muscle & Strength"},
+              {value:"both",label:"Fat Loss + Muscle (Recomp)"},
+              {value:"endurance",label:"Endurance & Stamina"},
+            ]}/>
+            <Select label="Available Equipment" value={form.equipment} onChange={e=>upd("equipment",e.target.value)} options={[
+              {value:"none",label:"None — pure bodyweight"},
+              {value:"minimal",label:"Minimal (resistance bands, pull-up bar)"},
+              {value:"dumbbells",label:"Dumbbells + home setup"},
+              {value:"gym",label:"Full gym access"},
+            ]}/>
+          </>}
+
+          {form.goalType==="habits"&&<>
+            <Input label="What habit do you most want to build?" value={form.habitGoal} onChange={e=>upd("habitGoal",e.target.value)} placeholder="e.g. Morning routine, reading 30 min, focus"/>
+          </>}
+
+          {form.goalType==="career"&&<>
+            <Input label="Skill you want to build" value={form.careerSkill} onChange={e=>upd("careerSkill",e.target.value)} placeholder="e.g. Python, UI Design, Writing"/>
+            <Select label="Your goal with this skill" value={form.careerGoal} onChange={e=>upd("careerGoal",e.target.value)} options={[
+              {value:"job",label:"Get a job / placement"},
+              {value:"freelance",label:"Freelance & earn money"},
+              {value:"project",label:"Build a personal project"},
+              {value:"upskill",label:"General upskilling"},
+            ]}/>
+          </>}
+
+          <div style={{display:"flex",gap:8}}>
+            <Btn variant="outline" onClick={()=>setStep(1)} style={{flex:1}}>← Back</Btn>
+            <Btn onClick={next} style={{flex:2}}>Continue →</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: Schedule preferences */}
+      {step===3&&(
+        <div className="fadein">
+          <div style={{fontWeight:900,fontSize:"1.2rem",color:T.text,marginBottom:6}}>Schedule Preferences</div>
+          <div style={{fontSize:".72rem",color:T.muted2,marginBottom:20}}>When do you work best? We'll build around your life.</div>
+          <Input label="Wake Up Time" type="time" value={form.wakeTime} onChange={e=>upd("wakeTime",e.target.value)}/>
+          <Input label="Sleep Time" type="time" value={form.sleepTime} onChange={e=>upd("sleepTime",e.target.value)}/>
+          <Input label="Free hours per day (excluding work/college)" type="number" value={form.freeHours} onChange={e=>upd("freeHours",e.target.value)} placeholder="4"/>
+          {err&&<div style={{fontSize:".7rem",color:T.red,marginBottom:12,background:"#200a0a",padding:"10px 12px",borderRadius:8}}>{err}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <Btn variant="outline" onClick={()=>setStep(2)} style={{flex:1}}>← Back</Btn>
+            <Btn onClick={next} style={{flex:2}}>Generate My Schedule →</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4: Generating */}
+      {step===4&&(
+        <div className="fadein" style={{textAlign:"center",padding:"40px 0"}}>
+          <div style={{fontSize:"3rem",marginBottom:20}}>⚡</div>
+          <div style={{fontWeight:900,fontSize:"1.3rem",color:T.gold,marginBottom:8}}>Building Your Plan</div>
+          <div style={{fontSize:".75rem",color:T.muted2,lineHeight:1.7,marginBottom:30}}>
+            Claude AI is analysing your goals and building a personalised schedule. This takes about 15–30 seconds.
+          </div>
+          {loading&&<Spinner size={32}/>}
+          {err&&(
+            <div style={{marginTop:20}}>
+              <div style={{fontSize:".7rem",color:T.red,marginBottom:12,background:"#200a0a",padding:"10px 12px",borderRadius:8,textAlign:"left"}}>{err}</div>
+              <Btn onClick={()=>setStep(3)}>← Try Again</Btn>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════════════════
+const AppPage = ({user,profile,onSignOut,onAdmin})=>{
+  const [tab,setTab]=useState("today");
+  const [tasks,setTasks]=useState([]);
+  const [newLabel,setNewLabel]=useState("");
+  const [nextId,setNextId]=useState(1000);
+  const [records,setRecords]=useState({});
+  const [streak,setStreak]=useState({current:0,longest:0});
+  const [userData,setUserData]=useState(null);
+  const [leaderboard,setLeaderboard]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const isAdmin=user?.email===ADMIN_EMAIL;
+
+  // Load all data
+  useEffect(()=>{
+    const load=async()=>{
+      setLoading(true);
+      const today=todayStr();
+      // Load user data (schedule)
+      const{data:ud}=await sb.from("user_data").select("*").eq("user_id",user.id).single();
+      setUserData(ud);
+
+      // Load today's tasks
+      let{data:t}=await sb.from("tasks").select("*").eq("user_id",user.id).eq("date",today).order("created_at");
+      if(!t||t.length===0){
+        // Seed from schedule
+        if(ud?.schedule?.tasks?.length){
+          const inserts=ud.schedule.tasks.slice(0,15).map(tk=>({user_id:user.id,date:today,label:tk.label,category:tk.category,done:false,is_default:true}));
+          const{data:inserted}=await sb.from("tasks").insert(inserts).select();
+          t=inserted||[];
+        }
+      }
+      setTasks(t||[]);
+
+      // Load records (last 3 months for calendar)
+      const{data:rec}=await sb.from("daily_records").select("date,completion_pct").eq("user_id",user.id);
+      const recMap={};
+      (rec||[]).forEach(r=>{recMap[r.date]=r.completion_pct;});
+      setRecords(recMap);
+
+      // Load streak
+      const{data:st}=await sb.from("streaks").select("*").eq("user_id",user.id).single();
+      if(st)setStreak({current:st.current_streak,longest:st.longest_streak});
+
+      // Leaderboard
+      const{data:lb}=await sb.from("streaks").select("user_id,current_streak,longest_streak,profiles(full_name,email)").order("current_streak",{ascending:false}).limit(20);
+      setLeaderboard(lb||[]);
+
+      setLoading(false);
+    };
+    load();
+  },[user.id]);
+
+  // Compute completion
+  const done=tasks.filter(t=>t.done).length;
+  const total=tasks.length;
+  const pct=total?Math.round((done/total)*100):0;
+
+  // Save record + update streak on task change
+  const saveProgress=useCallback(async(newTasks)=>{
+    const d=newTasks.filter(t=>t.done).length;
+    const tot=newTasks.length;
+    const p=tot?Math.round((d/tot)*100):0;
+    const today=todayStr();
+    await sb.from("daily_records").upsert({user_id:user.id,date:today,completion_pct:p,tasks_done:d,tasks_total:tot},{onConflict:"user_id,date"});
+    setRecords(r=>({...r,[today]:p}));
+    // Update streak
+    if(p>=50){
+      const yest=new Date();yest.setDate(yest.getDate()-1);
+      const yestStr=yest.toISOString().slice(0,10);
+      const{data:st}=await sb.from("streaks").select("*").eq("user_id",user.id).single();
+      let curr=st?.current_streak||0;
+      let longest=st?.longest_streak||0;
+      const last=st?.last_active_date;
+      if(last===yestStr||last===today) curr=last===today?curr:curr+1;
+      else if(last!==today) curr=1;
+      longest=Math.max(longest,curr);
+      await sb.from("streaks").upsert({user_id:user.id,current_streak:curr,longest_streak:longest,last_active_date:today,updated_at:new Date().toISOString()});
+      setStreak({current:curr,longest});
+    }
+  },[user.id]);
+
+  const toggle=async(id)=>{
+    const updated=tasks.map(t=>t.id===id?{...t,done:!t.done}:t);
+    setTasks(updated);
+    await sb.from("tasks").update({done:!tasks.find(t=>t.id===id).done}).eq("id",id);
+    await saveProgress(updated);
+  };
+
+  const addTask=async()=>{
+    const label=newLabel.trim();
+    if(!label)return;
+    const{data}=await sb.from("tasks").insert({user_id:user.id,date:todayStr(),label,category:"custom",done:false,is_default:false}).select().single();
+    if(data){const updated=[...tasks,data];setTasks(updated);await saveProgress(updated);}
+    setNewLabel("");setNextId(n=>n+1);
+  };
+
+  const removeTask=async(id)=>{
+    await sb.from("tasks").delete().eq("id",id);
+    const updated=tasks.filter(t=>t.id!==id);
+    setTasks(updated);await saveProgress(updated);
+  };
+
+  const catColors={
+    routine:{bg:"#1a1200",text:T.gold},
+    fitness:{bg:"#081808",text:"#52ff82"},
+    study:{bg:"#0a0a2b",text:"#5282ff"},
+    health:{bg:"#0a2b1a",text:"#52c9a0"},
+    custom:{bg:"#2b0a2b",text:"#ff82ff"},
+    break:{bg:"#1a1a1a",text:T.muted2},
+  };
+  const catLabels={routine:"Daily Routine",fitness:"Fitness",study:"Study",health:"Health",custom:"My Custom Tasks",break:"Break"};
+  const grouped=["routine","fitness","study","health","custom","break"].reduce((acc,cat)=>{
+    const items=tasks.filter(t=>t.category===cat);
+    if(items.length)acc[cat]=items;
+    return acc;
+  },{});
+
+  const TABS_CFG=[{id:"today",icon:"✅",label:"Today"},{id:"schedule",icon:"📋",label:"Schedule"},{id:"progress",icon:"📈",label:"Progress"},{id:"leaderboard",icon:"🏆",label:"Board"},{id:"settings",icon:"⚙️",label:"Settings"}];
+
+  if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}><Spinner size={36}/></div>;
+
+  const sched=userData?.schedule;
+  const schedItems=sched?.daily_schedule||[];
+  const rules=sched?.key_rules||[];
+
+  const schedColors={study:{bg:"#0a0a2b",text:"#5282ff"},fitness:{bg:"#081808",text:"#52ff82"},routine:{bg:"#1a1200",text:T.gold},break:{bg:"#111",text:T.muted2}};
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",maxWidth:600,margin:"0 auto",paddingBottom:80}}>
+      {/* Header */}
+      <div style={{padding:"16px 16px 12px",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,background:T.bg,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontWeight:900,color:T.gold,letterSpacing:"2px",fontSize:".9rem"}}>LEVELUP</div>
+            <div style={{fontSize:".65rem",color:T.muted2,marginTop:1}}>Hello, {profile?.full_name?.split(" ")[0]||"Champion"} 👋</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",fontSize:".65rem",color:T.gold,fontWeight:700}}>🔥 {streak.current} day{streak.current!==1?"s":""}</div>
+            {isAdmin&&<Btn variant="outline" onClick={onAdmin} style={{padding:"6px 10px",fontSize:".6rem"}}>Admin</Btn>}
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{padding:"16px",animation:"fadein .3s ease"}}>
+
+        {/* TODAY TAB */}
+        {tab==="today"&&(
+          <div>
+            {/* Pie + streak */}
+            <div style={{display:"flex",alignItems:"center",gap:16,background:T.card2,border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 20px",marginBottom:16}}>
+              <Donut pct={pct} size={100}/>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:900,fontSize:"1.6rem",color:T.gold,lineHeight:1}}>{pct}%</div>
+                <div style={{fontSize:".7rem",color:T.muted2,marginTop:4}}><span style={{color:T.text,fontWeight:700}}>{done}</span> of <span style={{color:T.text,fontWeight:700}}>{total}</span> tasks done today</div>
+                <div style={{marginTop:8,height:5,background:"#1a1a1a",borderRadius:10,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${T.goldDim},${T.gold})`,borderRadius:10,transition:"width .4s ease"}}/>
+                </div>
+                <div style={{fontSize:".6rem",color:T.muted,marginTop:4,textTransform:"uppercase",letterSpacing:"1px"}}>
+                  {pct===100?"🔥 Flawless Day!":pct>=75?"💪 Almost there!":pct>=50?"⚡ Halfway — push!":"🏹 Empire Awaits"}
+                </div>
+              </div>
+            </div>
+
+            {/* Streak banner */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+              {[["🔥 Current Streak",`${streak.current} days`],["🏆 Best Streak",`${streak.longest} days`]].map(([l,v])=>(
+                <Card key={l} style={{textAlign:"center",padding:"12px 8px"}}>
+                  <div style={{fontSize:".6rem",color:T.muted2,marginBottom:4}}>{l}</div>
+                  <div style={{fontWeight:900,color:T.gold,fontSize:"1.1rem"}}>{v}</div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Tasks */}
+            {Object.entries(grouped).map(([cat,items])=>(
+              <div key={cat} style={{marginBottom:12}}>
+                <div style={{fontSize:".6rem",fontWeight:700,letterSpacing:"2px",color:catColors[cat]?.text||T.muted2,textTransform:"uppercase",marginBottom:6,paddingLeft:2}}>{catLabels[cat]||cat}</div>
+                <Card style={{padding:0,overflow:"hidden"}}>
+                  {items.map((task,i)=>(
+                    <div key={task.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderBottom:i<items.length-1?`1px solid ${T.border}`:"none",background:task.done?"#0d0d0d":"transparent",cursor:"pointer",transition:"background .2s"}} onClick={()=>toggle(task.id)}>
+                      <div style={{width:20,height:20,borderRadius:6,flexShrink:0,border:task.done?`2px solid ${T.gold}`:`2px solid ${T.border}`,background:task.done?T.gold:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .2s"}}>
+                        {task.done&&<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1.5" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </div>
+                      <div style={{flex:1,fontSize:".75rem",color:task.done?T.muted:T.text,textDecoration:task.done?"line-through":"none",lineHeight:1.4}}>{task.label}</div>
+                      {cat==="custom"&&<div onClick={e=>{e.stopPropagation();removeTask(task.id);}} style={{color:T.muted,fontSize:".7rem",padding:"2px 6px"}}>✕</div>}
+                    </div>
+                  ))}
+                </Card>
+              </div>
+            ))}
+
+            {/* Add task */}
+            <div style={{marginTop:8}}>
+              <div style={{fontSize:".6rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:"2px",marginBottom:6}}>Add Custom Task</div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()} placeholder="e.g. Complete Chapter 5..." style={{flex:1,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,color:T.text,padding:"10px 14px",fontSize:".75rem",outline:"none",fontFamily:"inherit"}}/>
+                <Btn onClick={addTask} style={{padding:"0 16px"}}>Add</Btn>
+              </div>
+            </div>
+
+            {/* Monthly records */}
+            <div style={{marginTop:24}}>
+              <div style={{fontWeight:900,fontSize:".82rem",letterSpacing:"3px",color:T.gold,textTransform:"uppercase",marginBottom:12}}>Monthly Record</div>
+              <Card><MonthCalendar records={records}/></Card>
+            </div>
+          </div>
+        )}
+
+        {/* SCHEDULE TAB */}
+        {tab==="schedule"&&(
+          <div>
+            <div style={{fontWeight:900,fontSize:".9rem",letterSpacing:"3px",color:T.gold,textTransform:"uppercase",marginBottom:12}}>Your AI Schedule</div>
+            {schedItems.length===0?(
+              <Card><div style={{textAlign:"center",padding:20,color:T.muted2,fontSize:".78rem"}}>No schedule generated yet. Complete onboarding first.</div></Card>
+            ):(
+              <>
+                {schedItems.map((item,i)=>{
+                  const col=schedColors[item.category]||schedColors.routine;
+                  return(
+                    <Card key={i} style={{marginBottom:9}}>
+                      <div style={{display:"flex",gap:12}}>
+                        <div style={{fontWeight:800,fontSize:".68rem",color:T.gold,minWidth:"90px",lineHeight:1.4}}>{item.time}</div>
+                        <div style={{flex:1}}>
+                          <Tag color={col}>{item.category}</Tag>
+                          <div style={{fontWeight:700,fontSize:".8rem",color:T.text,margin:"4px 0 3px"}}>{item.title}</div>
+                          <div style={{fontSize:".7rem",color:T.muted2,lineHeight:1.6}}>{item.desc}</div>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+                {sched?.weekly_plan&&(
+                  <Card style={{marginTop:16,background:T.goldFaint,borderColor:"#2a1e00"}}>
+                    <div style={{fontWeight:700,color:T.gold,fontSize:".78rem",marginBottom:8}}>Weekly Strategy</div>
+                    <div style={{fontSize:".7rem",color:T.muted2,lineHeight:1.7}}>{sched.weekly_plan.note}</div>
+                    {sched.weekly_plan.structure&&<div style={{fontSize:".7rem",color:T.muted2,marginTop:6,lineHeight:1.7}}>{sched.weekly_plan.structure}</div>}
+                  </Card>
+                )}
+                {rules.length>0&&(
+                  <div style={{marginTop:16}}>
+                    <div style={{fontWeight:900,fontSize:".82rem",letterSpacing:"2px",color:T.gold,textTransform:"uppercase",marginBottom:10}}>Your Rules</div>
+                    {rules.map((r,i)=>(
+                      <div key={i} style={{borderLeft:`3px solid ${T.gold}`,padding:"10px 14px",background:"#0c0c0c",borderRadius:"0 8px 8px 0",marginBottom:8}}>
+                        <div style={{fontSize:".72rem",color:T.text,lineHeight:1.6}}>0{i+1}. {r}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {sched?.neet_roadmap&&(
+                  <Card style={{marginTop:16,background:T.goldFaint,borderColor:"#2a1e00"}}>
+                    <div style={{fontWeight:700,color:T.gold,fontSize:".78rem",marginBottom:8}}>Roadmap</div>
+                    <div style={{fontSize:".7rem",color:T.muted2,lineHeight:1.7}}>{sched.neet_roadmap}</div>
+                  </Card>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* PROGRESS TAB */}
+        {tab==="progress"&&(
+          <div>
+            <div style={{fontWeight:900,fontSize:".9rem",letterSpacing:"3px",color:T.gold,textTransform:"uppercase",marginBottom:12}}>Progress Records</div>
+            <Card style={{marginBottom:14}}><MonthCalendar records={records}/></Card>
+            <div style={{fontWeight:900,fontSize:".82rem",letterSpacing:"3px",color:T.gold,textTransform:"uppercase",marginBottom:10}}>Yearly Overview</div>
+            <Card><YearlyChart records={records}/></Card>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:14}}>
+              {[["100%",pctColor(100)],["≥75%",pctColor(80)],["≥50%",pctColor(60)],["≥25%",pctColor(30)],["<25%",pctColor(10)],["No data",pctColor(undefined)]].map(([l,c])=>(
+                <div key={l} style={{display:"flex",alignItems:"center",gap:5}}>
+                  <div style={{width:10,height:10,borderRadius:2,background:c.bg,border:`1px solid ${c.text}`}}/>
+                  <span style={{fontSize:".6rem",color:T.muted2}}>{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* LEADERBOARD TAB */}
+        {tab==="leaderboard"&&(
+          <div>
+            <div style={{fontWeight:900,fontSize:".9rem",letterSpacing:"3px",color:T.gold,textTransform:"uppercase",marginBottom:12}}>Global Leaderboard</div>
+            <div style={{fontSize:".68rem",color:T.muted2,marginBottom:14,background:T.goldFaint,border:"1px solid #2a1e00",borderRadius:8,padding:"10px 12px",lineHeight:1.7}}>
+              Ranked by current streak. Complete 50%+ of your tasks daily to maintain your streak.
+            </div>
+            {leaderboard.length===0?(
+              <Card><div style={{textAlign:"center",padding:20,color:T.muted2,fontSize:".78rem"}}>No data yet. Be the first to build a streak!</div></Card>
+            ):(
+              <Card style={{padding:0,overflow:"hidden"}}>
+                {leaderboard.map((entry,i)=>{
+                  const name=entry.profiles?.full_name||entry.profiles?.email?.split("@")[0]||"Anonymous";
+                  const isMe=entry.user_id===user.id;
+                  const medals=["🥇","🥈","🥉"];
+                  return(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:i<leaderboard.length-1?`1px solid ${T.border}`:"none",background:isMe?"#131300":"transparent"}}>
+                      <div style={{width:28,textAlign:"center",fontSize:i<3?"1.1rem":".75rem",color:i<3?T.text:T.muted,fontWeight:700}}>{medals[i]||`#${i+1}`}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:".78rem",color:isMe?T.gold:T.text}}>{name}{isMe?" (You)":""}</div>
+                        <div style={{fontSize:".62rem",color:T.muted2,marginTop:1}}>Best: {entry.longest_streak} days</div>
+                      </div>
+                      <div style={{fontWeight:900,color:T.gold,fontSize:".9rem"}}>🔥 {entry.current_streak}</div>
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* SETTINGS TAB */}
+        {tab==="settings"&&(
+          <div>
+            <div style={{fontWeight:900,fontSize:".9rem",letterSpacing:"3px",color:T.gold,textTransform:"uppercase",marginBottom:12}}>Settings</div>
+            <Card style={{marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:".8rem",marginBottom:12}}>Profile</div>
+              <div style={{fontSize:".72rem",color:T.muted2,lineHeight:2}}>
+                <div><span style={{color:T.text,fontWeight:600}}>Name:</span> {profile?.full_name||"—"}</div>
+                <div><span style={{color:T.text,fontWeight:600}}>Email:</span> {user?.email}</div>
+                <div><span style={{color:T.text,fontWeight:600}}>Goal:</span> {userData?.goal_type||"—"}</div>
+                <div><span style={{color:T.text,fontWeight:600}}>Member since:</span> {new Date(user?.created_at||Date.now()).toLocaleDateString()}</div>
+              </div>
+            </Card>
+            <Card style={{marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:".8rem",marginBottom:8}}>Your Schedule</div>
+              <div style={{fontSize:".7rem",color:T.muted2,marginBottom:12}}>Want to regenerate your schedule with updated goals?</div>
+              <Btn variant="outline" onClick={async()=>{
+                await sb.from("profiles").update({onboarding_complete:false}).eq("id",user.id);
+                window.location.reload();
+              }} style={{width:"100%"}}>Regenerate My Schedule</Btn>
+            </Card>
+            <Card>
+              <div style={{fontWeight:700,fontSize:".8rem",marginBottom:8}}>Account</div>
+              <Btn variant="danger" onClick={onSignOut} style={{width:"100%"}}>Sign Out</Btn>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Nav */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:T.bg,borderTop:`1px solid ${T.border}`,display:"flex",zIndex:100,maxWidth:600,margin:"0 auto"}}>
+        {TABS_CFG.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 4px 8px",background:"transparent",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:3,cursor:"pointer",transition:"all .2s"}}>
+            <span style={{fontSize:"1.1rem"}}>{t.icon}</span>
+            <span style={{fontSize:".55rem",fontWeight:tab===t.id?700:400,color:tab===t.id?T.gold:T.muted,letterSpacing:".5px",textTransform:"uppercase"}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADMIN PANEL
+// ═══════════════════════════════════════════════════════════════════════════════
+const AdminPanel = ({onBack})=>{
+  const [users,setUsers]=useState([]);
+  const [stats,setStats]=useState({total:0,activeToday:0,avgCompletion:0});
+  const [loading,setLoading]=useState(true);
+  const [selectedUser,setSelectedUser]=useState(null);
+  const [tab,setTab]=useState("users");
+
+  useEffect(()=>{
+    const load=async()=>{
+      setLoading(true);
+      const{data:profiles}=await sb.from("profiles").select("*").order("created_at",{ascending:false});
+      const{data:streaks}=await sb.from("streaks").select("*");
+      const{data:todayRec}=await sb.from("daily_records").select("*").eq("date",todayStr());
+      const{data:ud}=await sb.from("user_data").select("user_id,goal_type,schedule_generated_at");
+
+      const streakMap={};(streaks||[]).forEach(s=>{streakMap[s.user_id]=s;});
+      const udMap={};(ud||[]).forEach(u=>{udMap[u.user_id]=u;});
+      const todayMap={};(todayRec||[]).forEach(r=>{todayMap[r.user_id]=r;});
+
+      const enriched=(profiles||[]).map(p=>({...p,streak:streakMap[p.id]||null,userData:udMap[p.id]||null,today:todayMap[p.id]||null}));
+      setUsers(enriched);
+
+      const avgComp=todayRec?.length?Math.round(todayRec.reduce((a,r)=>a+r.completion_pct,0)/todayRec.length):0;
+      setStats({total:profiles?.length||0,activeToday:todayRec?.length||0,avgCompletion:avgComp});
+      setLoading(false);
+    };
+    load();
+  },[]);
+
+  const deleteUser=async(id)=>{
+    if(!confirm("Delete this user and all their data?"))return;
+    await sb.from("tasks").delete().eq("user_id",id);
+    await sb.from("daily_records").delete().eq("user_id",id);
+    await sb.from("streaks").delete().eq("user_id",id);
+    await sb.from("user_data").delete().eq("user_id",id);
+    await sb.from("profiles").delete().eq("id",id);
+    setUsers(u=>u.filter(x=>x.id!==id));
+  };
+
+  if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}><Spinner size={32}/></div>;
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",padding:"16px",maxWidth:860,margin:"0 auto"}} className="fadein">
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <span style={{cursor:"pointer",color:T.muted2,fontSize:"1.2rem"}} onClick={onBack}>←</span>
+        <div style={{fontWeight:900,fontSize:"1.1rem",letterSpacing:"3px",color:T.gold}}>ADMIN PANEL</div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:20}}>
+        {[["Total Users",stats.total],["Active Today",stats.activeToday],["Avg Completion",stats.avgCompletion+"%"]].map(([l,v])=>(
+          <Card key={l} style={{textAlign:"center"}}>
+            <div style={{fontSize:".6rem",color:T.muted2,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>{l}</div>
+            <div style={{fontWeight:900,color:T.gold,fontSize:"1.5rem"}}>{v}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:16,background:T.card,padding:4,borderRadius:10,border:`1px solid ${T.border}`}}>
+        {["users","schedules"].map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",fontSize:".62rem",fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",background:tab===t?T.gold:"transparent",color:tab===t?"#000":T.muted}}>{t}</button>
+        ))}
+      </div>
+
+      {tab==="users"&&(
+        <Card style={{padding:0,overflow:"hidden"}}>
+          {users.map((u,i)=>(
+            <div key={u.id} style={{padding:"14px 16px",borderBottom:i<users.length-1?`1px solid ${T.border}`:"none"}}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:".8rem",color:T.text}}>{u.full_name||"Unnamed"}</div>
+                  <div style={{fontSize:".65rem",color:T.muted2,marginTop:2}}>{u.email}</div>
+                  <div style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap"}}>
+                    <Tag color={{bg:"#1a1200",text:T.gold}}>{u.userData?.goal_type||"No goal"}</Tag>
+                    <Tag color={{bg:"#0a2b1a",text:"#52c9a0"}}>🔥 {u.streak?.current_streak||0} streak</Tag>
+                    {u.today&&<Tag color={pctColor(u.today.completion_pct)}>{u.today.completion_pct}% today</Tag>}
+                    {!u.onboarding_complete&&<Tag color={{bg:"#2b0a0a",text:"#ff7052"}}>No schedule</Tag>}
+                  </div>
+                  <div style={{fontSize:".58rem",color:T.muted,marginTop:4}}>Joined: {new Date(u.created_at).toLocaleDateString()}</div>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  {u.userData?.schedule&&(
+                    <Btn variant="outline" onClick={()=>setSelectedUser(selectedUser?.id===u.id?null:u)} style={{padding:"5px 10px",fontSize:".6rem"}}>View</Btn>
+                  )}
+                  {u.email!==ADMIN_EMAIL&&(
+                    <Btn variant="danger" onClick={()=>deleteUser(u.id)} style={{padding:"5px 10px",fontSize:".6rem"}}>Del</Btn>
+                  )}
+                </div>
+              </div>
+              {selectedUser?.id===u.id&&u.userData?.schedule&&(
+                <div style={{marginTop:12,background:"#0a0a0a",borderRadius:8,padding:12}}>
+                  <div style={{fontSize:".68rem",fontWeight:700,color:T.gold,marginBottom:8}}>Schedule Preview</div>
+                  {(u.userData.schedule.daily_schedule||[]).slice(0,5).map((s,i)=>(
+                    <div key={i} style={{fontSize:".65rem",color:T.muted2,marginBottom:4,lineHeight:1.5}}>
+                      <span style={{color:T.gold,fontWeight:700}}>{s.time}</span> — {s.title}
+                    </div>
+                  ))}
+                  {(u.userData.schedule.daily_schedule||[]).length>5&&<div style={{fontSize:".62rem",color:T.muted}}>...and {(u.userData.schedule.daily_schedule||[]).length-5} more blocks</div>}
+                </div>
+              )}
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {tab==="schedules"&&(
+        <div>
+          {users.filter(u=>u.userData?.schedule).map((u,i)=>(
+            <Card key={u.id} style={{marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:".8rem",color:T.text,marginBottom:4}}>{u.full_name||u.email}</div>
+              <div style={{fontSize:".65rem",color:T.muted2,marginBottom:8}}>Goal: {u.userData.goal_type} · Generated: {new Date(u.userData.schedule_generated_at).toLocaleDateString()}</div>
+              <div style={{fontSize:".68rem",color:T.muted2}}>
+                {(u.userData.schedule.daily_schedule||[]).length} schedule blocks · {(u.userData.schedule.tasks||[]).length} tasks
+              </div>
+            </Card>
+          ))}
+          {users.filter(u=>u.userData?.schedule).length===0&&(
+            <Card><div style={{textAlign:"center",padding:20,color:T.muted2,fontSize:".78rem"}}>No schedules generated yet.</div></Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ROOT APP
+// ═══════════════════════════════════════════════════════════════════════════════
+function App(){
+  const [view,setView]=useState("loading");
+  const [loadErr,setLoadErr]=useState("");
+  const [user,setUser]=useState(null);
+  const [profile,setProfile]=useState(null);
+
+  const handleUser=useCallback(async(u)=>{
+    try{
+      setUser(u);
+      // Just fetch existing profile — trigger auto-creates it on signup
+      const{data:existing}=await sb.from("profiles").select("*").eq("id",u.id).single();
+      if(existing){
+        // Make sure admin role is set correctly
+        if(u.email===ADMIN_EMAIL && existing.role!=="admin"){
+          await sb.from("profiles").update({role:"admin"}).eq("id",u.id);
+          existing.role="admin";
+        }
+        setProfile(existing);
+        setView(existing.onboarding_complete?"app":"onboarding");
+        return;
+      }
+      // Fallback: profile not created by trigger yet, create it manually
+      const newP={id:u.id,email:u.email,
+        full_name:u.user_metadata?.full_name||u.user_metadata?.name||u.email.split("@")[0],
+        role:u.email===ADMIN_EMAIL?"admin":"user",onboarding_complete:false};
+      await sb.from("profiles").insert(newP);
+      setProfile(newP);
+      setView("onboarding");
+    }catch(e){
+      console.error("handleUser error:",e);
+      setLoadErr("Failed to load profile: "+e.message);
+    }
+  },[]);
+
+  useEffect(()=>{
+    // Timeout failsafe — if still loading after 8s, show error
+    const timer=setTimeout(()=>{
+      setLoadErr("Connection timed out. Check your internet and refresh.");
+    },8000);
+
+    const init=async()=>{
+      try{
+        const{data:{session}}=await sb.auth.getSession();
+        clearTimeout(timer);
+        if(session?.user) await handleUser(session.user);
+        else setView("landing");
+      }catch(e){
+        clearTimeout(timer);
+        setLoadErr("Connection failed: "+e.message);
+      }
+    };
+    init();
+
+    const{data:{subscription}}=sb.auth.onAuthStateChange(async(_,session)=>{
+      clearTimeout(timer);
+      try{
+        if(session?.user) await handleUser(session.user);
+        else{setView("landing");setUser(null);setProfile(null);}
+      }catch(e){setLoadErr("Auth error: "+e.message);}
+    });
+    return()=>{clearTimeout(timer);subscription.unsubscribe();};
+  },[handleUser]);
+
+  const signOut=async()=>{
+    await sb.auth.signOut();
+    setView("landing");setUser(null);setProfile(null);setLoadErr("");
+  };
+
+  if(view==="loading")return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",flexDirection:"column",gap:16,background:T.bg,padding:20}}>
+      <div style={{fontWeight:900,fontSize:"1.5rem",color:T.gold,letterSpacing:"4px"}}>LEVELUP</div>
+      {!loadErr&&<Spinner size={28}/>}
+      {loadErr&&(
+        <div style={{textAlign:"center",maxWidth:340}}>
+          <div style={{fontSize:".75rem",color:T.red,background:"#200a0a",padding:"12px 16px",borderRadius:10,marginBottom:16,lineHeight:1.6}}>{loadErr}</div>
+          <button onClick={()=>window.location.reload()} style={{background:T.gold,color:"#000",border:"none",borderRadius:10,padding:"10px 24px",fontWeight:700,cursor:"pointer",fontSize:".8rem"}}>Refresh Page</button>
+        </div>
+      )}
+    </div>
+  );
+
+  if(view==="landing")return<LandingPage onGetStarted={()=>setView("auth")}/>;
+  if(view==="auth")return<AuthPage onBack={()=>setView("landing")}/>;
+  if(view==="onboarding"&&user)return<OnboardingPage user={user} onComplete={()=>{setProfile(p=>({...p,onboarding_complete:true}));setView("app");}}/>;
+  if(view==="app"&&user)return<AppPage user={user} profile={profile} onSignOut={signOut} onAdmin={()=>setView("admin")}/>;
+  if(view==="admin"&&user?.email===ADMIN_EMAIL)return<AdminPanel onBack={()=>setView("app")}/>;
+  return<LandingPage onGetStarted={()=>setView("auth")}/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
